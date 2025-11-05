@@ -92,3 +92,93 @@ CREATE TABLE [dbo].[UsuarioAdmin] (
     CONSTRAINT [PK_UsuarioAdmin] PRIMARY KEY CLUSTERED ([id] ASC),
     CONSTRAINT [UQ_AdminNombre] UNIQUE ([nombre])
 );
+
+-- 11. Persona/Cliente
+CREATE TABLE [dbo].[Persona] (
+    [ValorDocumento] [int] NOT NULL,
+    [nombre] [varchar](64) NOT NULL,
+    [email] [varchar](64) NOT NULL,
+    [telefono] [varchar](64) NOT NULL,
+    CONSTRAINT [PK_Persona] PRIMARY KEY CLUSTERED ([ValorDocumento] ASC),
+);
+
+-- 12. Propiedad/Finca
+CREATE TABLE [dbo].[Propiedad] (
+    [NumeroFinca] [varchar](64) NOT NULL, 
+    [MetrosCuadrados] [float] NOT NULL,
+    [ValorFiscal] [float] NOT NULL,
+    [idTipoUsoPropiedad] [int] NOT NULL,
+    [idTipoZonaPropiedad] [int] NOT NULL,
+    [FechaRegistro][date] NOT NULL,
+    [SaldoM3][float] NOT NULL,
+    [SaldoM3UltimaFactura] [float] NOT NULL,
+    CONSTRAINT [PK_Propiedad] PRIMARY KEY CLUSTERED ([NumeroFinca] ASC),
+    FOREIGN KEY ([idTipoUsoPropiedad]) REFERENCES [dbo].[TipoUsoPropiedad] ([id]),
+    FOREIGN KEY ([idTipoZonaPropiedad]) REFERENCES [dbo].[TipoZonaPropiedad] ([id])
+);
+
+-- 13. Medidor
+CREATE TABLE [dbo].[Medidor] (
+    [NumeroMedidor] [varchar](64) NOT NULL,
+    [NumeroFinca] [varchar](64) UNIQUE NOT NULL, 
+    CONSTRAINT [PK_Medidor] PRIMARY KEY CLUSTERED ([NumeroMedidor] ASC),
+    FOREIGN KEY ([NumeroFinca]) REFERENCES [dbo].[Propiedad] ([NumeroFinca])
+);
+
+-- 14. Relaci�n Persona-Propiedad 
+CREATE TABLE [dbo].[PropiedadPersona] (
+    [ValorDocumento] [int] NOT NULL,
+    [NumeroFinca] [varchar](64) NOT NULL,
+    [idTipoAsociacion] [int] NOT NULL,
+    [FechaInicio][date] NOT NULL,
+    [FechaFin][date] NULL,
+    FOREIGN KEY ([ValorDocumento]) REFERENCES [dbo].[Persona] ([ValorDocumento]),
+    FOREIGN KEY ([NumeroFinca]) REFERENCES [dbo].[Propiedad] ([NumeroFinca]),
+    FOREIGN KEY ([idTipoAsociacion]) REFERENCES [dbo].[TipoAsociacion] ([id])
+);
+
+-- 15. Relaci�n ConceptoCobro-Propiedad 
+CREATE TABLE [dbo].[CCPropiedad] (
+    [NumeroFinca] [varchar](64) NOT NULL,
+    [idConceptoCobro] [int] NOT NULL,
+    [idTipoAsociacion] [int] NOT NULL,
+    FOREIGN KEY ([NumeroFinca]) REFERENCES [dbo].[Propiedad] ([NumeroFinca]),
+    FOREIGN KEY ([idConceptoCobro]) REFERENCES [dbo].[ConceptoCobro] ([id]),
+    FOREIGN KEY ([idTipoAsociacion]) REFERENCES [dbo].[TipoAsociacion] ([id])
+);
+
+
+-- 16. Lecturas de Medidor 
+CREATE TABLE [dbo].[LecturasMedidor] (
+    [NumeroMedidor] [varchar](64) NOT NULL,
+    [Valor] [float] NOT NULL,
+    [idTipoMovimiento] [int] NOT NULL,
+    SaldoAnterior FLOAT NULL,
+    SaldoNuevo FLOAT NULL,
+    FOREIGN KEY ([NumeroMedidor]) REFERENCES [dbo].[Medidor] ([NumeroMedidor]),
+    FOREIGN KEY ([idTipoMovimiento]) REFERENCES [dbo].[TipoMovimientoLecturaMedidor] ([id])
+);
+
+-- 17. Pagos (Simulaci�n: Pagos)
+CREATE TABLE [dbo].[Pagos] (
+    [NumeroFinca] [varchar](64) NOT NULL,
+    [idTipoMedioPago] [int] NOT NULL,
+    [NumeroReferencia] [varchar](64) NOT NULL,
+    FOREIGN KEY ([NumeroFinca]) REFERENCES [dbo].[Propiedad] ([NumeroFinca]),
+    FOREIGN KEY ([idTipoMedioPago]) REFERENCES [dbo].[TipoMedioPago] ([id])
+);
+
+-- 18. Factura (Resultado del proceso de cobro)
+CREATE TABLE [dbo].[Factura] (
+    [NumeroComprobante] INT IDENTITY(1000,1) NOT NULL,
+    [FechaGeneracion] [date] NOT NULL,
+    [NumeroFinca] [varchar](64) NOT NULL,
+    [FechaOperacion] [date] NOT NULL,
+    [FechaVencimiento] [date] NOT NULL,
+    [TotalAPagarOriginal] [float] NOT NULL,
+    [TotalAPagarFinal] [float] NOT NULL,
+    [Detalle] [text] NOT NULL,
+    [Estado] [varchar](64) NOT NULL,
+    CONSTRAINT [PK_Factura] PRIMARY KEY CLUSTERED ([NumeroComprobante] ASC),
+    FOREIGN KEY ([NumeroFinca]) REFERENCES [dbo].[Propiedad] ([NumeroFinca])
+);
