@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sistema de Pago de Facturas - Admin</title>
+	
+	<style>
+		/* 1. Reset y Fuente */
+		:root {
+			font-family: 'Inter', sans-serif;
+			--color-primary: #4f46e5; /* Indigo-600 */
+			--color-primary-dark: #4338ca; /* Indigo-700 */
+			--color-background: #f3f4f6; /* Gray-100 */
+			--color-card-bg: #ffffff;
+			--color-text-dark: #1f2937; /* Gray-800 */
+			--color-text-medium: #6b7280; /* Gray-500 */
+            --color-success: #059669; /* Green-600 */
+            --color-warning: #d97706; /* Amber-600 */
+		}
+		*, *::before, *::after {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+		}
+
+		/* 2. Estilo del Body (Fondo y Centrado) */
+		body {
+			background-color: var(--color-background);
+			display: flex;
+			align-items: flex-start; /* Alineación superior para evitar desbordamiento */
+			justify-content: center;
+			min-height: 100vh;
+			padding: 2rem 1rem;
+		}
+
+		/* 3. Contenedor principal de la aplicación */
+		.app-container {
+			width: 100%;
+			max-width: 900px;
+			margin-top: 2rem;
+		}
+
+		/* 4. Contenedor de Formulario (Tarjeta) - Aplicado a Login y Main App */
+		.card {
+			background-color: var(--color-card-bg);
+			padding: 2rem;
+			border-radius: 0.75rem;
+			box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+			transition: all 300ms ease-in-out;
+			margin-bottom: 2rem;
+		}
+
+		/* 5. Cabecera */
+		.header {
+			text-align: center;
+			margin-bottom: 2rem;
+		}
+
+		.header h1 {
+			font-size: 1.875rem;
+			font-weight: 800;
+			color: var(--color-text-dark);
+			margin-bottom: 0.5rem;
+		}
+
+		.header p {
+			color: var(--color-text-medium);
+			font-size: 0.875rem;
+		}
+		
+		/* 6. Formulario y Grupos */
+		.form-group {
+			margin-bottom: 1.5rem;
+		}
+
+		.form-group label {
+			display: block;
+			font-size: 0.875rem;
+			font-weight: 500;
+			color: var(--color-text-dark);
+			margin-bottom: 0.25rem;
+		}
+
+		.form-group input, .form-group select {
+			width: 100%;
+			padding: 0.6rem 1rem;
+			border: 1px solid #d1d5db;
+			border-radius: 0.5rem;
+			box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+			transition: all 150ms ease-in-out;
+		}
+		
+		.form-group input:focus, .form-group select:focus {
+			outline: 2px solid transparent;
+			outline-offset: 2px;
+			border-color: var(--color-primary);
+			box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.5);
+		}
+
+		/* 7. Botones */
+		.btn {
+			display: block;
+			width: 100%;
+			background-color: var(--color-primary);
+			color: white;
+			padding: 0.75rem 1.5rem;
+			border-radius: 0.5rem;
+			font-weight: 500;
+			border: none;
+			cursor: pointer;
+			box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+			transition: background-color 150ms ease-in-out, box-shadow 150ms ease-in-out;
+			text-align: center;
+		}
+
+		.btn:hover {
+			background-color: var(--color-primary-dark);
+			box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+		}
+		
+		.btn:disabled {
+			background-color: #9ca3af; 
+			cursor: not-allowed;
+			box-shadow: none;
+		}
+		.button-row {
+			display: flex;
+			gap: 1rem; /* Espacio entre los botones */
+			margin-top: 1rem;
+		}
+
+		/* Asegurar que los botones dentro del grupo compartan el espacio y se anule el width: 100% */
+		.button-row .btn {
+			width: auto;
+			flex: 1; /* Distribuye el espacio equitativamente */
+			margin-top: 0;
+			}
+
+		/* Estilo secundario para diferenciar el botón de consulta */
+		.btn-secondary {
+			background-color: #6b7280; 
+			}
+
+		.btn-secondary:hover {
+			background-color: #4b5563; 
+			}
+		
+
+		/* 8. Estilos de Mensajes (Alertas) */
+		.message-box {
+			text-align: center;
+			font-size: 0.875rem;
+			padding: 0.75rem;
+			border-radius: 0.5rem;
+			margin-top: 1rem;
+			display: none;
+		}
+
+		.hidden { display: none !important; }
+		.success { background-color: #d1fae5; color: #065f46; border: 1px solid #34d399; } /* Green */
+		.error { background-color: #fee2e2; color: #991b1b; border: 1px solid #f87171; } /* Red */
+		.info { background-color: #e0f2fe; color: #075985; border: 1px solid #38bdf8; } /* Blue */
+		.warning { background-color: #fef3c7; color: #92400e; border: 1px solid #fbbf24; } /* Yellow */
+
+		/* 9. Layout de la Aplicación Principal */
+		.main-grid {
+			display: grid;
+			grid-template-columns: 1fr;
+			gap: 2rem;
+		}
+
+		@media (min-width: 768px) {
+			.main-grid {
+				grid-template-columns: 2fr 1fr; /* Panel principal y panel de pago */
+			}
+		}
+
+		/* 10. Bloques de Información */
+		.info-block {
+			margin-top: 1.5rem;
+			padding: 1.5rem;
+			border: 1px solid #e5e7eb;
+			border-radius: 0.5rem;
+		}
+
+		.info-block h3 {
+			font-size: 1.125rem;
+			font-weight: 600;
+			margin-bottom: 1rem;
+			color: var(--color-primary-dark);
+			border-bottom: 2px solid var(--color-primary);
+			padding-bottom: 0.5rem;
+		}
+
+		.data-row {
+			display: flex;
+			justify-content: space-between;
+			padding: 0.3rem 0;
+			border-bottom: 1px dotted #e5e7eb;
+			font-size: 0.9rem;
+		}
+
+		.data-row:last-child {
+			border-bottom: none;
+			font-weight: 600;
+			color: var(--color-text-dark);
+			padding-top: 0.5rem;
+		}
+
+		.data-label {
+			color: var(--color-text-medium);
+			font-weight: 500;
+		}
+
+		.data-value {
+			text-align: right;
+		}
+        
+        /* 11. Estilos para la tabla de facturas */
+        #invoiceListContainer table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        #invoiceListContainer thead th {
+            text-align: left;
+            padding: 0.75rem 0.5rem;
+            background-color: #e5e7eb;
+            font-weight: 600;
+            color: var(--color-text-dark);
+            position: sticky; /* Sticky header */
+            top: 0;
+        }
+
+        #invoiceListContainer tbody td {
+            padding: 0.75rem 0.5rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        #invoiceListContainer tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .status-pendiente {
+            background-color: #fef3c7; 
+            color: var(--color-warning);
+            border: 1px solid #fde68a;
+        }
+
+        .status-pagada {
+            background-color: #d1fae5; 
+            color: var(--color-success);
+            border: 1px solid #a7f3d0;
+        }
+
+        .status-row-pendiente {
+            background-color: #fffbeb; 
+        }
+	</style>
+</head>
+<body>
+	<div class="app-container">
+		
+		<!-- ---------------------------------------------------- -->
+		<!-- LOGIN -->
+		<!-- ---------------------------------------------------- -->
+		<div id="loginView" class="card">
+			<header class="header">
+				<h1>Acceso al Sistema</h1>
+				<p>Introduce tus credenciales de administrador.</p>
+			</header>
+			
+			<form id="loginForm">
+				<div class="form-group">
+					<label for="usuario">Usuario</label>
+					<input 
+						type="text" 
+						id="usuario" 
+						required 
+						placeholder="Ej: JuanGra"
+					>
+				</div>
+
+				<div class="form-group">
+					<label for="contrasena">Contraseña</label>
+					<input 
+						type="password" 
+						id="contrasena" 
+						required 
+						placeholder="Ej: Juan1987*"
+					>
+				</div>
+
+				<button 
+					type="submit" 
+					class="btn"
+					id="loginButton"
+				>
+					Iniciar Sesión
+				</button>
+
+				<div id="loginMessageBox" class="message-box hidden" role="alert"></div>
+			</form>
+		</div>
+		
+		<!-- ---------------------------------------------------- -->
+		<!-- MAIN APPLICATION (OCULTO INICIALMENTE) -->
+		<!-- ---------------------------------------------------- -->
+		<div id="mainAppView" class="hidden">
+			
+			<div class="card">
+				<header class="header" style="margin-bottom: 0;">
+					<h1 style="font-size: 1.5rem;">Gestión de Pagos <span id="welcomeUser" style="color: var(--color-primary);"></span></h1>
+					<p>Busca una propiedad por número de finca o ID de Persona.</p>
+				</header>
+			</div>
+
+			<div class="main-grid">
+				
+				<!-- PANEL IZQUIERDO: BÚSQUEDA Y DETALLE DE FACTURA -->
+				<div>
+					<!-- BÚSQUEDA DE PROPIEDAD -->
+					<div class="card">
+						<h3>Buscar Propiedad y Facturas</h3>
+						<form id="searchForm">
+							<div class="form-group" style="margin-bottom: 1rem;">
+								<label for="searchTerm">Término de Búsqueda</label>
+								<input 
+									type="text" 
+									id="searchTerm" 
+									required 
+									placeholder="Finca o ID de persona"
+								>
+							</div>
+							<div class="button-row">
+								<button 
+									type="submit" 
+									class="btn"
+									id="searchButton"
+								>
+									Factura Pendiente (Pagar)
+								</button>
+								<button 
+									type="button" 
+									class="btn btn-secondary"
+									id="consulButton"
+								>
+									Consultar Historial
+								</button>
+							</div>
+							<div id="searchMessageBox" class="message-box hidden" role="alert"></div>
+						</form>
+
+						<!-- DETALLES DE LA PROPIEDAD -->
+						<div id="propertyDetails" class="info-block hidden">
+							<h3>Detalles de la Propiedad</h3>
+							<div class="data-row"><span class="data-label">Finca:</span> <span id="propFinca" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Uso:</span> <span id="propUso" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">M²:</span> <span id="propMetros" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Valor Fiscal:</span> <span id="propValorFiscal" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Saldo M³:</span> <span id="propSaldoM3" class="data-value"></span></div>
+						</div>
+
+						<!-- DETALLES DE LA FACTURA PENDIENTE MÁS ANTIGUA -->
+						<div id="invoiceDetails" class="info-block hidden warning">
+							<h3>Factura Pendiente más Antigua</h3>
+							<div class="data-row"><span class="data-label">Comprobante Nº:</span> <span id="invComprobante" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Generación:</span> <span id="invGeneracion" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Vencimiento:</span> <span id="invVencimiento" class="data-value"></span></div>
+							<div class="data-row"><span class="data-label">Detalle:</span> <span id="invDetalle" class="data-value" style="font-size: 0.75rem; max-width: 60%;"></span></div>
+							<div class="data-row"><span class="data-label">Total a Pagar:</span> <span id="invTotalPagar" class="data-value" style="color: #b91c1c; font-size: 1.25rem;"></span></div>
+						</div>
+					</div>
+
+                    <!-- RESULTS: LISTA DE FACTURAS COMPLETAS  -->
+                    <div id="invoiceListResults" class="card hidden" style="margin-top: 0rem;">
+                        <h3>Historial Completo de Facturas</h3>
+                        <div id="invoiceListContainer" style="max-height: 400px; overflow-y: auto;">
+                            <!-- Aquí se cargará la tabla de facturas -->
+                            <p class="info" style="margin-top: 0;">Ingrese un término de búsqueda y haga clic en "Consultar Historial".</p>
+                        </div>
+                    </div>
+				</div>
+
+				<!-- PANEL DERECHO: FORMULARIO DE PAGO -->
+				<div>
+					<div class="card">
+						<h3>Procesar Pago</h3>
+						<form id="paymentForm">
+							<div class="form-group">
+								<label for="pagoMonto">Monto a Pagar (Factura)</label>
+								<input 
+									type="number" 
+									id="pagoMonto" 
+									required 
+									readonly
+									placeholder="Se carga automáticamente"
+								>
+								<small style="display: block; color: var(--color-text-medium); margin-top: 0.2rem;">Este monto corresponde a la factura pendiente más antigua.</small>
+							</div>
+
+							<div class="form-group">
+								<label for="pagoReferencia">Número de Referencia (Depósito/Transf.)</label>
+								<input 
+									type="text" 
+									id="pagoReferencia" 
+									required 
+									placeholder="Ingresa el número de referencia"
+								>
+							</div>
+
+							<div class="form-group">
+								<label for="pagoMedio">Medio de Pago</label>
+								<select id="pagoMedio" required>
+									<!-- Los IDs (Value) corresponden a la tabla TipoMedioPago -->
+									<option value="" disabled selected>Selecciona un medio</option>
+									<option value="1">Efectivo</option>
+									<option value="2">Transferencia Bancaria</option>
+									<option value="3">Tarjeta de Crédito/Débito</option>
+								</select>
+							</div>
+
+							<button 
+								type="submit" 
+								class="btn"
+								id="payButton"
+								disabled
+							>
+								Confirmar Pago
+							</button>
+							<div id="paymentMessageBox" class="message-box hidden" role="alert"></div>
+						</form>
+					</div>
+
+					<!-- COMPROBANTE DE PAGO -->
+					<div id="receiptDetails" class="card hidden success">
+						<h3>Comprobante de Pago Exitoso</h3>
+						<p style="margin-bottom: 0.5rem; font-size: 0.9rem;">El pago se procesó correctamente.</p>
+						<div class="data-row"><span class="data-label">Código Transacción:</span> <span id="receiptCodigo" class="data-value"></span></div>
+						<div class="data-row"><span class="data-label">Monto Final Pagado:</span> <span id="receiptMonto" class="data-value" style="font-size: 1.25rem;"></span></div>
+						<button 
+							type="button" 
+							class="btn"
+							style="margin-top: 1rem; background-color: #047857;"
+							onclick="resetApp()"
+						>
+							Procesar Nueva Transacción
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
