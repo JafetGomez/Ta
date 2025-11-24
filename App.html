@@ -462,3 +462,503 @@
 			</div>
 		</div>
 	</div>
+
+	<script>
+		// ----------------------------------------------------
+		// CONSTANTES Y ESTADO GLOBAL
+		// ----------------------------------------------------
+		const API_BASE = 'http://localhost:3000'; // Se define el puerto completo para solicitudes CORS
+		let user = null;
+		let currentProperty = null;
+		let currentInvoice = null;
+
+		// ----------------------------------------------------
+		// REFERENCIAS DEL DOM
+		// ----------------------------------------------------
+		const loginView = document.getElementById('loginView');
+		const mainAppView = document.getElementById('mainAppView');
+		
+		// Login
+		const loginForm = document.getElementById('loginForm');
+		const loginButton = document.getElementById('loginButton');
+		const loginMessageBox = document.getElementById('loginMessageBox');
+		const welcomeUser = document.getElementById('welcomeUser');
+
+		// Search
+		const searchForm = document.getElementById('searchForm');
+		const searchButton = document.getElementById('searchButton');
+        const consulButton = document.getElementById('consulButton'); 
+		const searchMessageBox = document.getElementById('searchMessageBox');
+		const propertyDetails = document.getElementById('propertyDetails');
+		const invoiceDetails = document.getElementById('invoiceDetails');
+        const invoiceListResults = document.getElementById('invoiceListResults'); 
+        const invoiceListContainer = document.getElementById('invoiceListContainer'); 
+
+		// Payment
+		const paymentForm = document.getElementById('paymentForm');
+		const payButton = document.getElementById('payButton');
+		const paymentMessageBox = document.getElementById('paymentMessageBox');
+		const pagoMontoInput = document.getElementById('pagoMonto');
+		const receiptDetails = document.getElementById('receiptDetails');
+
+
+		// ----------------------------------------------------
+		// FUNCIONES DE UTILIDAD (UI & FETCH)
+		// ----------------------------------------------------
+
+		/**
+		 * Muestra un mensaje en la caja de mensajes especificada.
+		 */
+		function showMessage(box, text, type = 'error') {
+			box.textContent = text;
+			box.className = `message-box ${type}`;
+			box.style.display = 'block';
+		}
+		
+		/**
+		 * Oculta la caja de mensajes.
+		 */
+		function hideMessage(box) {
+			box.style.display = 'none';
+		}
+
+		/**
+		 * Formatea un número como moneda (ej: ₡1.234,56).
+		 */
+		function formatCurrency(amount) {
+			return new Intl.NumberFormat('es-CR', { 
+				style: 'currency', 
+				currency: 'CRC',
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2
+			}).format(amount);
+		}
+		
+		/**
+		 * Formatea una fecha como cadena legible (DD/MM/AAAA).
+		 */
+		function formatDate(dateString) {
+			if (!dateString) return 'N/A';
+			const date = new Date(dateString);
+			return date.toLocaleDateString('es-CR', { 
+				year: 'numeric', 
+				month: '2-digit', 
+				day: '2-digit' 
+			});
+		}
+
+		/**
+		 * Fetch con reintentos y retroceso exponencial.
+		 */
+		async function fetchWithRetry(url, options = {}, retries = 3) {
+			for (let i = 0; i < retries; i++) {
+				try {
+					const response = await fetch(API_BASE + url, options);
+					
+					// Si la respuesta es 4xx o 5xx, la manejamos en el catch
+					if (response.status >= 400 && response.status < 600) {
+						let errorMessage;
+						try {
+							const errorBody = await response.json();
+							errorMessage = errorBody.message || `Error del servidor: ${response.status}`;
+						} catch (e) {
+							errorMessage = `Error del servidor: ${response.status}. Respuesta no JSON.`;
+						}
+						throw new Error(errorMessage);
+					}
+
+					return response.json();
+
+				} catch (error) {
+					// No mostrar reintentos fallidos en la consola para evitar ruido
+					// console.error(`Intento ${i + 1} fallido para ${url}:`, error.message);
+					if (i < retries - 1) {
+						const delay = Math.pow(2, i) * 1000; // Retroceso exponencial: 1s, 2s, 4s
+						await new Promise(resolve => setTimeout(resolve, delay));
+					} else {
+						throw new Error("Conexión fallida o error de servidor después de varios reintentos. " + error.message);
+					}
+				}
+			}
+		}
+
+
+		// ----------------------------------------------------
+		// MANEJO DE VISTAS
+		// ----------------------------------------------------
+
+		/**
+		 * Cambia entre la vista de Login y la aplicación principal.
+		 */
+		function showMainApp(userName) {
+			loginView.classList.add('hidden');
+			mainAppView.classList.remove('hidden');
+			welcomeUser.textContent = `(${userName})`;
+		}
+
+		/**
+		 * Restablece el estado de la aplicación para una nueva transacción.
+		 */
+		function resetApp() {
+			currentProperty = null;
+			currentInvoice = null;
+			
+			// Ocultar paneles de detalles
+			propertyDetails.classList.add('hidden');
+			invoiceDetails.classList.add('hidden');
+			receiptDetails.classList.add('hidden');
+            invoiceListResults.classList.add('hidden'); // Ocultar la lista de resultados
+
+            // Limpiar lista de facturas
+            invoiceListContainer.innerHTML = '<p class="info" style="margin-top: 0;">Ingrese un término de búsqueda y haga clic en "Consultar Historial".</p>';
+			
+			// Resetear formularios y mensajes
+			searchForm.reset();
+			paymentForm.reset();
+			pagoMontoInput.value = '';
+			
+			hideMessage(searchMessageBox);
+			hideMessage(paymentMessageBox);
+			
+			payButton.disabled = true;
+			searchButton.disabled = false;
+            consulButton.disabled = false;
+			
+			// Habilitar campos de búsqueda y formulario de pago (si estaba oculto)
+			document.getElementById('searchTerm').readOnly = false;
+			paymentForm.classList.remove('hidden');
+		}
+
+
+		// ----------------------------------------------------
+		// MANEJADORES DE EVENTOS
+		// ----------------------------------------------------
+
+		/**
+		 * 1. MANEJO DEL LOGIN
+		 */
+		loginForm.addEventListener('submit', async function (event) {
+			event.preventDefault();
+			
+			const username = document.getElementById('usuario').value;
+			const password = document.getElementById('contrasena').value;
+			
+			loginButton.disabled = true;
+			showMessage(loginMessageBox, "Iniciando sesión...", 'info');
+
+			try {
+				const data = await fetchWithRetry('/api/login', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ username, password })
+				});
+
+				if (data.success) {
+					user = data.user;
+					showMessage(loginMessageBox, `Bienvenido, ${user.nombre}.`, 'success');
+					setTimeout(() => showMainApp(user.nombre), 1000);
+				} else {
+					showMessage(loginMessageBox, data.message || 'Error de autenticación.', 'error');
+				}
+
+			} catch (error) {
+				showMessage(loginMessageBox, error.message || 'Error de conexión con el servidor de autenticación.', 'error');
+				console.error("Login Error:", error);
+			} finally {
+				loginButton.disabled = false;
+			}
+		});
+
+		/**
+		 * 2. MANEJO DE LA BÚSQUEDA DE PROPIEDAD Y FACTURA PENDIENTE (Botón Pagar)
+		 */
+		searchForm.addEventListener('submit', async function (event) {
+			event.preventDefault();
+			
+			// Limpiar estado y vistas
+			currentProperty = null;
+			currentInvoice = null;
+			propertyDetails.classList.add('hidden');
+			invoiceDetails.classList.add('hidden');
+			payButton.disabled = true;
+			receiptDetails.classList.add('hidden');
+            invoiceListResults.classList.add('hidden'); // Ocultar la vista de lista
+
+			const searchTerm = document.getElementById('searchTerm').value.trim();
+			
+			searchButton.disabled = true;
+            consulButton.disabled = true;
+			showMessage(searchMessageBox, "Buscando propiedad...", 'info');
+
+			try {
+				// Llamada al ENDPOINT 2: /api/propiedad/search
+				const data = await fetchWithRetry(`/api/propiedad/search?term=${encodeURIComponent(searchTerm)}`);
+
+				if (data.success) {
+					currentProperty = data.property;
+					showMessage(searchMessageBox, `Propiedad ${currentProperty.NumeroFinca} encontrada.`, 'success');
+					displayProperty(currentProperty);
+					
+					// Una vez que tenemos la propiedad, buscamos la factura pendiente
+					await fetchOldestPendingInvoice(currentProperty.NumeroFinca);
+				} else {
+					showMessage(searchMessageBox, data.message || 'Propiedad no encontrada.', 'error');
+				}
+
+			} catch (error) {
+				showMessage(searchMessageBox, error.message || 'Error al buscar propiedad.', 'error');
+				console.error("Search Error:", error);
+			} finally {
+				searchButton.disabled = false;
+                consulButton.disabled = false;
+			}
+		});
+        
+        /**
+         * 2b. MANEJO DE LA CONSULTA DE TODAS LAS FACTURAS (Botón Consultar Historial)
+         */
+        consulButton.addEventListener('click', async function () {
+            
+            // Limpiar estado y vistas
+			currentProperty = null;
+			currentInvoice = null;
+			propertyDetails.classList.add('hidden');
+			invoiceDetails.classList.add('hidden');
+			payButton.disabled = true;
+			receiptDetails.classList.add('hidden');
+            paymentForm.classList.add('hidden'); // Ocultar formulario de pago
+            invoiceListResults.classList.remove('hidden'); // Mostrar la vista de lista
+            
+            const searchTerm = document.getElementById('searchTerm').value.trim();
+            if (!searchTerm) {
+                showMessage(searchMessageBox, "Debe ingresar un número de Finca o ID de persona para consultar el historial.", 'error');
+                invoiceListContainer.innerHTML = '<p class="info" style="margin-top: 0;">Ingrese un término de búsqueda y haga clic en "Consultar Historial".</p>';
+                return;
+            }
+            
+            searchButton.disabled = true;
+            consulButton.disabled = true;
+			showMessage(searchMessageBox, "Consultando historial de facturas...", 'info');
+            invoiceListContainer.innerHTML = '<p class="info" style="text-align: center;">Cargando...</p>';
+
+            try {
+                // Se asume el nuevo endpoint que llama al SP
+                // Llamada al ENDPOINT 5: /api/factura/search-all?term=...
+                const data = await fetchWithRetry(`/api/factura/search-all?term=${encodeURIComponent(searchTerm)}`);
+
+                if (data.success && data.invoices && data.invoices.length > 0) {
+                    showMessage(searchMessageBox, `Se encontraron ${data.invoices.length} facturas (Pendientes y Pagadas).`, 'success');
+                    renderInvoiceList(data.invoices);
+                    
+                    // También buscamos y mostramos los detalles de la propiedad asociada al primer resultado
+                    if (data.invoices[0].NumeroFinca) {
+                        await fetchPropertyDetails(data.invoices[0].NumeroFinca);
+                    }
+
+                } else {
+                    showMessage(searchMessageBox, data.message || 'No se encontraron facturas para el término de búsqueda.', 'error');
+                    invoiceListContainer.innerHTML = '<p class="error" style="margin-top: 0; padding: 0.5rem; border: none; background: transparent;">No se encontraron facturas (Pendientes o Pagadas).</p>';
+                }
+
+            } catch (error) {
+                showMessage(searchMessageBox, error.message || 'Error al consultar el historial de facturas.', 'error');
+				console.error("All Invoices Search Error:", error);
+                invoiceListContainer.innerHTML = '<p class="error" style="margin-top: 0; padding: 0.5rem; border: none; background: transparent;">Error de conexión al obtener el historial.</p>';
+            } finally {
+                searchButton.disabled = false;
+                consulButton.disabled = false;
+            }
+        });
+
+		/**
+		 * FUNCIÓN AUXILIAR: Muestra los detalles de la propiedad
+		 */
+		function displayProperty(prop) {
+			document.getElementById('propFinca').textContent = prop.NumeroFinca || 'N/A';
+			document.getElementById('propUso').textContent = prop.UsoPropiedad || 'N/A';
+			document.getElementById('propMetros').textContent = prop.MetrosCuadrados ? `${prop.MetrosCuadrados.toLocaleString('es-CR')} m²` : 'N/A';
+			document.getElementById('propValorFiscal').textContent = prop.ValorFiscal ? formatCurrency(prop.ValorFiscal) : 'N/A';
+			document.getElementById('propSaldoM3').textContent = prop.SaldoM3 || 'N/A'; // Asumiendo que SaldoM3 es un número o string
+			propertyDetails.classList.remove('hidden');
+		}
+
+        /**
+		 * FUNCIÓN AUXILIAR: Busca los detalles de la propiedad
+		 */
+		async function fetchPropertyDetails(numeroFinca) {
+			try {
+				const data = await fetchWithRetry(`/api/propiedad/details/${encodeURIComponent(numeroFinca)}`);
+				if (data.success && data.property) {
+                    currentProperty = data.property;
+					displayProperty(currentProperty);
+				}
+			} catch (error) {
+				console.error("Error fetching property details:", error);
+			}
+		}
+
+        /**
+         * FUNCIÓN AUXILIAR: Renderiza la lista de facturas en una tabla
+         */
+        function renderInvoiceList(invoices) {
+            const container = document.getElementById('invoiceListContainer');
+            if (invoices.length === 0) {
+                container.innerHTML = '<p class="info" style="margin-top: 0;">No se encontraron facturas.</p>';
+                return;
+            }
+
+            // Construir la tabla
+            let html = '<table>';
+            html += '<thead><tr><th>Finca</th><th>Comprobante</th><th>Generación</th><th>Total</th><th>Estado</th></tr></thead>';
+            html += '<tbody>';
+
+            invoices.forEach(inv => {
+                const statusClass = inv.Estado && inv.Estado.toLowerCase().includes('pendiente') ? 'status-pendiente' : 'status-pagada';
+                const rowClass = inv.Estado && inv.Estado.toLowerCase().includes('pendiente') ? 'status-row-pendiente' : '';
+                html += `<tr class="${rowClass}">`;
+                html += `<td>${inv.NumeroFinca || 'N/A'}</td>`;
+                html += `<td>${inv.NumeroComprobante || 'N/A'}</td>`;
+                html += `<td>${formatDate(inv.FechaGeneracion)}</td>`;
+                html += `<td>${formatCurrency(inv.TotalAPagarFinal || 0)}</td>`;
+                html += `<td><span class="status-badge ${statusClass}">${inv.Estado || 'N/A'}</span></td>`;
+                html += `</tr>`;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+		/**
+		 * FUNCIÓN AUXILIAR: 3. BUSCAR FACTURA PENDIENTE (Flujo de Pago)
+		 */
+		async function fetchOldestPendingInvoice(numeroFinca) {
+			showMessage(searchMessageBox, "Buscando factura pendiente...", 'info');
+			
+            // Ocultar la vista de lista de facturas
+            invoiceListResults.classList.add('hidden'); 
+
+			try {
+				// Llamada al ENDPOINT 3: /api/factura/oldest-pending/:numeroFinca
+				const data = await fetchWithRetry(`/api/factura/oldest-pending/${encodeURIComponent(numeroFinca)}`);
+
+				if (data.success) {
+					currentInvoice = data.invoice;
+					showMessage(searchMessageBox, `Factura pendiente encontrada (Comprobante #${currentInvoice.NumeroComprobante}).`, 'warning');
+					displayInvoice(currentInvoice);
+					payButton.disabled = false;
+					document.getElementById('searchTerm').readOnly = true; // Bloquea búsqueda mientras haya factura
+					paymentForm.classList.remove('hidden'); // Asegura que el formulario de pago sea visible
+				} else {
+					// No hay facturas pendientes
+					currentInvoice = null;
+					showMessage(searchMessageBox, data.message || 'No hay facturas pendientes para esta propiedad.', 'success');
+					invoiceDetails.classList.add('hidden');
+					payButton.disabled = true;
+					paymentForm.classList.add('hidden'); // Oculta el formulario si no hay nada que pagar
+				}
+
+			} catch (error) {
+				showMessage(searchMessageBox, error.message || 'Error al buscar la factura pendiente.', 'error');
+				console.error("Invoice Search Error:", error);
+				payButton.disabled = true;
+				paymentForm.classList.add('hidden'); // Oculta el formulario si hay un error
+			}
+		}
+
+		/**
+		 * FUNCIÓN AUXILIAR: Muestra los detalles de la factura
+		 */
+		function displayInvoice(invoice) {
+			document.getElementById('invComprobante').textContent = invoice.NumeroComprobante;
+			document.getElementById('invGeneracion').textContent = formatDate(invoice.FechaGeneracion);
+			document.getElementById('invVencimiento').textContent = formatDate(invoice.FechaVencimiento);
+			document.getElementById('invTotalPagar').textContent = formatCurrency(invoice.TotalAPagarFinal);
+			document.getElementById('invDetalle').textContent = invoice.Detalle || 'Sin detalles adicionales.';
+			
+			// Pre-carga el monto de la factura en el formulario de pago
+			pagoMontoInput.value = invoice.TotalAPagarFinal.toFixed(2); 
+
+			invoiceDetails.classList.remove('hidden');
+		}
+
+		/**
+		 * 4. MANEJO DEL PAGO
+		 */
+		paymentForm.addEventListener('submit', async function (event) {
+			event.preventDefault();
+
+			if (!currentInvoice || !currentProperty) {
+				showMessage(paymentMessageBox, "No hay una factura o propiedad seleccionada para pagar.", 'error');
+				return;
+			}
+
+			const numeroComprobante = currentInvoice.NumeroComprobante;
+			const numeroFinca = currentProperty.NumeroFinca;
+			// Usamos el valor del input, que ya está cargado con el TotalAPagarFinal.toFixed(2)
+			const montoPago = parseFloat(pagoMontoInput.value); 
+			const numeroReferencia = document.getElementById('pagoReferencia').value.trim();
+			const idTipoMedioPago = document.getElementById('pagoMedio').value;
+
+			if (isNaN(montoPago) || montoPago <= 0) {
+				showMessage(paymentMessageBox, "El monto a pagar es inválido.", 'error');
+				return;
+			}
+			if (!idTipoMedioPago) {
+				showMessage(paymentMessageBox, "Debe seleccionar un medio de pago.", 'error');
+				return;
+			}
+			
+			payButton.disabled = true;
+			showMessage(paymentMessageBox, "Procesando pago (esto puede tomar unos segundos)...", 'info');
+
+			try {
+				// Llamada al ENDPOINT 4: /api/factura/pay
+				const data = await fetchWithRetry('/api/factura/pay', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						numeroComprobante,
+						numeroFinca,
+						montoPago,
+						numeroReferencia,
+						idTipoMedioPago: parseInt(idTipoMedioPago)
+					})
+				});
+
+				if (data.success) {
+					showMessage(paymentMessageBox, "¡Pago registrado con éxito!", 'success');
+					displayReceipt(data.pago);
+					// Ocultar formulario de pago y detalles de factura
+					paymentForm.classList.add('hidden');
+					invoiceDetails.classList.add('hidden');
+                    // Desbloquear campo de búsqueda después del pago
+                    document.getElementById('searchTerm').readOnly = false;
+
+
+				} else {
+					showMessage(paymentMessageBox, data.message || 'Fallo al procesar el pago.', 'error');
+				}
+
+			} catch (error) {
+				showMessage(paymentMessageBox, error.message || 'Error de red o servidor al procesar el pago.', 'error');
+				console.error("Payment Error:", error);
+			} finally {
+				payButton.disabled = false;
+			}
+		});
+
+		/**
+		 * FUNCIÓN AUXILIAR: Muestra el comprobante de pago
+		 */
+		function displayReceipt(pago) {
+			document.getElementById('receiptCodigo').textContent = pago.codigo;
+			document.getElementById('receiptMonto').textContent = formatCurrency(pago.monto);
+			receiptDetails.classList.remove('hidden');
+		}
+
+		// Inicializar la aplicación al cargar la página
+		document.addEventListener('DOMContentLoaded', resetApp);
+
+	</script>
+</body>
+</html>
