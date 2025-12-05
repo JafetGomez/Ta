@@ -748,3 +748,89 @@ BEGIN
 
     RETURN 0;
 END
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER   PROCEDURE [dbo].[sp_GenerarOrdenesCorteAgua]
+      @inFechaCorte DATE -- Fecha en la que se aplica o procesa el corte
+    , @outResultCode INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SET @outResultCode = 0;
+
+    -- 1. DECLARACIÓN DE VARIABLES INTERNAS
+    DECLARE @ESTADO_CORTE_PENDIENTE INT = 1;
+
+    -- 2. PROCESAMIENTO TRANSACCIONAL
+    BEGIN TRANSACTION;
+
+    BEGIN TRY
+
+      
+        INSERT INTO dbo.OrdenCorteAgua
+            (
+              NumeroFinca
+            , NumeroComprobante
+            , FechaCorte
+            , Estado
+            )
+        SELECT
+              F.NumeroFinca
+            , F.NumeroComprobante
+            , @inFechaCorte AS FechaCorte
+            , @ESTADO_CORTE_PENDIENTE AS Estado -- 1: Pendiente de corte / pago
+        FROM dbo.Factura AS F
+        
+        -- EXCLUSIÓN: Se excluyen las facturas que YA tienen una orden de corte PENDIENTE
+        LEFT JOIN dbo.OrdenCorteAgua AS OCA
+            ON (F.NumeroComprobante = OCA.NumeroComprobante)
+           AND (OCA.Estado = @ESTADO_CORTE_PENDIENTE)
+           
+        WHERE (F.Estado = 'Pendiente')
+          AND (F.FechaVencimiento < @inFechaCorte)
+          AND (OCA.NumeroComprobante IS NULL);
+
+        
+        COMMIT TRANSACTION;
+
+    END TRY
+    BEGIN CATCH
+
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        -- Insertar error en la tabla DBErrors
+        INSERT INTO dbo.DBErrors
+            (
+              UserName
+            , ErrorNumber
+            , ErrorState
+            , ErrorSeverity
+            , ErrorLine
+            , ErrorProcedure
+            , ErrorMessage
+            , ErrorDateTime
+            )
+        VALUES
+            (
+              SUSER_SNAME()
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , ERROR_PROCEDURE()
+            , ERROR_MESSAGE()
+            , GETDATE()
+            );
+
+        SET @outResultCode = 50005;
+
+    END CATCH;
+    
+    RETURN @outResultCode;
+END
